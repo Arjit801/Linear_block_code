@@ -1,0 +1,288 @@
+import math
+import numpy as num
+
+def GeneratorToH(G):
+    k = num.shape(G)[0]
+    n = num.shape(G)[1]
+    P = GeneratortoParity(G)
+    PT = num.transpose(P)
+    Ik = num.eye(n - k)
+    H = num.concatenate((Ik, PT), axis=1)
+    return H.astype(int)
+    
+
+def GeneratortoParity(G):
+    k = num.shape(G)[0]
+    n = num.shape(G)[1]
+    P = G[:k, : n-k]
+    return P.astype(int)
+    
+    
+    
+def intToArray(i, length=0):
+
+    if length > 0:
+        s = num.binary_repr(i, width=length)
+    else:
+        s = num.binary_repr(i)
+    m = num.fromstring(s, 'u1') - ord('0')
+    m = num.flipud(m)
+    return m
+    
+    
+def HammingWeight(v):
+  
+    return num.count_nonzero(v)
+    
+    
+
+def arrayToString(a):
+    s = ''
+    for i in range(len(a)):
+        s += str(int(a[i]))
+    return s
+    
+
+class LinearBlockCode:
+  __G = num.empty([0, 0])
+  def k(self):
+        
+        return num.shape(self.G())[0]
+
+  def n(self):
+        
+        return num.shape(self.G())[1]
+  def G(self):
+       
+        return self.__G
+
+  def setG(self, G):
+        
+        self.__G = G.astype(int)
+  def H(self):
+        
+        H = GeneratorToH(self.G())
+        return H.astype(int)
+  # def setH(self, H):
+        
+  #      G =   HtoG(H)
+  #       self.__G = G.astype(int)
+  # def P(self):
+      
+        P = GeneratortoParity(self.G())
+        return P.astype(int)
+  def c(self, m):
+  
+        c = m.dot(self.G()) % 2
+        return c.astype(int)
+
+  def s(self, r):
+    
+        HT = num.transpose(self.H())
+        s = r.dot(HT) % 2
+        return s.astype(int)
+  def M(self):
+       
+        k = self.k()
+        M = num.empty([2 ** k, k])
+        for i in range(0, 2 ** k):
+            M[i] = intToArray(i, k)
+        return M.astype(int)
+
+  def C(self):
+        
+        n = self.n()
+        k = self.k()
+        C = num.empty([2 ** k, n])
+        for i in range(0, 2 ** k):
+            m = intToArray(i, k)
+            c = self.c(m)
+            C[i] = c
+        return C.astype(int)
+    
+  def dmin(self, Verbose = False):
+       
+        dmin = self.n();
+        M = self.M()
+        if Verbose:
+            print("We start by selecting dmin = n")
+            print("dmin = ", dmin)
+            print("Iterate through the code table and compare the weight of each code vectors")
+        for m in M:
+            c = self.c(m)
+            if HammingWeight(c) != 0 and HammingWeight(c) < dmin:
+                if Verbose: dmin = HammingWeight(c)
+                
+            else:
+                if Verbose: continue
+
+        return dmin
+
+  def dminVerbose(self):
+        self.dmin(True)
+  def t(self):
+       
+        return math.floor((self.dmin() - 1) / 2)
+
+  def correctableErrorPatterns(self):
+        
+        E = num.empty([2 ** num.shape(self.H())[0], self.n()])
+        n = self.n()
+        t = self.t()
+        count = 0
+        for i in range(0, 2 ** n):
+            e = intToArray(i, n)
+            if HammingWeight(e) <= t and count < E.shape[0]:
+                s = self.s(e)
+                E[count] = e
+                count += 1
+        E = E[:count]
+        return E.astype(int)
+
+  def decodingTable(self):
+        
+        table = {}
+        errors = self.correctableErrorPatterns()
+        for e in errors:
+            s = self.s(e)
+            table[arrayToString(s)] = e
+        return table
+
+  def printDecodingTable(self):
+        
+        errors = self.correctableErrorPatterns()
+        print('Correctable Error Patterns -> Syndromes')
+        for e in errors:
+            s = self.s(e)
+            print(e, s)
+
+  def SyndromeDecode(self, r):
+        
+        print('Decoding received vector r =', r)
+        s = self.s(r)
+        print('s = r * H\' =', s)
+        print('Look up the decoding table:')
+        print()
+        self.printDecodingTable()
+        print()
+        table = self.decodingTable()
+        e = table[arrayToString(s)]
+        print('-> find error pattern e =', e)
+        c = (r + e) % 2
+        print('c = r + e =', c)
+        return c
+  
+  def printStandardArray(self):
+        H = self.H()
+        dmin = self.dmin()
+        t = self.t()
+        k = self.k()
+        n = self.n()
+
+        firstLine = True
+
+        for j in range(0, 2 ** n):
+            e = intToArray(j, n)
+            if (HammingWeight(e) <= t):
+                line = ''
+                for i in range(0, 2 ** k):
+                    m = intToArray(i, k)
+                    c = self.c(m)
+                    ce_sum = (c + e) % 2
+                    line += arrayToString(ce_sum)
+                    if i is 0:
+                        line += ' | '
+                    else:
+                        line += ' '
+                print(line)
+                if firstLine:
+                    firstLine = False
+                    print('-' * ((2 ** k) * (n + 1) + 1))
+
+  def printInfo(self):
+        print('-> Linear Block Code Cb(', self.n(), ',', self.k(), ')')
+        print('-> Message length (k):             ', self.k())
+        print('-> Codeword length (n):            ', self.n())
+        print('-> Minimum Distance (dmin):        ', self.dmin())
+        print('-> Error Correction Capability (t):', self.t())
+        print('-> Generator Matrix (G):')
+        print("")
+        print(self.G())
+        print("")
+        print('-> Message Codeword Table:')
+        print("")
+        print('-> Standard Array:')
+        print("")
+        self.printStandardArray()
+        print("")
+        print('-> Decoding Table:')
+        print("")
+        self.printDecodingTable()
+
+
+M =  num.array([[ 1,1,1,0,0],
+                [ 1,0,0,1,0],
+                [ 0,1,0,0,1]])
+a = LinearBlockCode();
+a.setG(M)
+k = a.k()
+a.printInfo()
+r = num.array([1,1,1,0,0])
+a.SyndromeDecode(r)
+
+
+-> Linear Block Code Cb( 5 , 3 )
+-> Message length (k):              3
+-> Codeword length (n):             5
+-> Minimum Distance (dmin):         5
+-> Error Correction Capability (t): 2
+-> Generator Matrix (G):
+
+[[1 1 1 0 0]
+ [1 0 0 1 0]
+ [0 1 0 0 1]]
+
+-> Message Codeword Table:
+
+-> Standard Array:
+
+00000 | 11100 10010 01110 01001 10101 11011 00111 
+-------------------------------------------------
+10000 | 01100 00010 11110 11001 00101 01011 10111 
+01000 | 10100 11010 00110 00001 11101 10011 01111 
+11000 | 00100 01010 10110 10001 01101 00011 11111 
+00100 | 11000 10110 01010 01101 10001 11111 00011 
+10100 | 01000 00110 11010 11101 00001 01111 10011 
+01100 | 10000 11110 00010 00101 11001 10111 01011 
+00010 | 11110 10000 01100 01011 10111 11001 00101 
+10010 | 01110 00000 11100 11011 00111 01001 10101 
+01010 | 10110 11000 00100 00011 11111 10001 01101 
+00110 | 11010 10100 01000 01111 10011 11101 00001 
+00001 | 11101 10011 01111 01000 10100 11010 00110 
+10001 | 01101 00011 11111 11000 00100 01010 10110 
+01001 | 10101 11011 00111 00000 11100 10010 01110 
+00101 | 11001 10111 01011 01100 10000 11110 00010 
+00011 | 11111 10001 01101 01010 10110 11000 00100 
+
+-> Decoding Table:
+
+Correctable Error Patterns -> Syndromes
+[0 0 0 0 0] [0 0]
+[1 0 0 0 0] [1 0]
+[0 1 0 0 0] [0 1]
+[1 1 0 0 0] [1 1]
+Decoding received vector r = [1 1 1 0 0]
+s = r * H' = [0 0]
+Look up the decoding table:
+
+Correctable Error Patterns -> Syndromes
+[0 0 0 0 0] [0 0]
+[1 0 0 0 0] [1 0]
+[0 1 0 0 0] [0 1]
+[1 1 0 0 0] [1 1]
+
+-> find error pattern e = [0 0 0 0 0]
+c = r + e = [1 1 1 0 0]
+/usr/local/lib/python3.7/dist-packages/ipykernel_launcher.py:7: DeprecationWarning: The binary mode of fromstring is deprecated, as it behaves surprisingly on unicode inputs. Use frombuffer instead
+  import sys
+array([1, 1, 1, 0, 0])
